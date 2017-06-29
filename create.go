@@ -136,6 +136,20 @@ func create(containerID, bundlePath, console, pidFilePath string,
 func createPod(ociSpec oci.CompatOCISpec, runtimeConfig oci.RuntimeConfig,
 	containerID, bundlePath, console string) (vc.Process, error) {
 
+	ccKernelParams = []vc.Param{
+		{"init", "/usr/lib/systemd/systemd"},
+		{"systemd.unit", "cc-agent.target"},
+		{"systemd.mask", "systemd-networkd.service"},
+		{"systemd.mask", "systemd-networkd.socket"},
+		{"ip", fmt.Sprintf("ip=::::::%s::off::", containerID)},
+	}
+
+	for _, p := range ccKernelParams {
+		if err := config.AddKernelParam(p); err != nil {
+			return vc.Process{}, err
+		}
+	}
+
 	podConfig, err := oci.PodConfig(ociSpec, runtimeConfig, bundlePath, containerID, console)
 	if err != nil {
 		return vc.Process{}, err
