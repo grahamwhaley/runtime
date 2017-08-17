@@ -13,7 +13,7 @@ This tool, henceforth referred to simply as "the runtime", builds upon
 the [virtcontainers](https://github.com/containers/virtcontainers)
 project to provide a high-performance standards-compliant runtime that
 creates hardware-virtualized containers which leverage
-[Intel](https://www.intel.com/)'s VT-x technology.
+[Intel](https://www.intel.com/)'s [VT-x technology](https://www.intel.co.uk/content/www/uk/en/virtualization/virtualization-technology/intel-virtualization-technology.html).
 
 It is a re-implementation of [`cc-oci-runtime`](https://github.com/01org/cc-oci-runtime) written in the go language and supersedes `cc-oci-runtime` starting from 3.0.0.
 
