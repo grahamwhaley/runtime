@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/containers/virtcontainers/pkg/oci"
 	"github.com/urfave/cli"
@@ -89,6 +90,9 @@ func run(containerID, bundle, console, consoleSocket, pidFile string, detach boo
 	if err := create(containerID, bundle, consolePath, pidFile, detach, runtimeConfig); err != nil {
 		return err
 	}
+
+	//let's have a small nap...
+	time.Sleep(time.Duration(5) * time.Second)
 
 	pod, err := start(containerID)
 	if err != nil {
