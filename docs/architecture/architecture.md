@@ -2,7 +2,7 @@
 
 * [Overview](#overview)
     * [Hypervisor](#hypervisor)
-    * [Hyperstart](#hyperstart)
+    * [Agent](#agent)
     * [Runtime](#runtime)
         * [create](#create)
         * [start](#start)
@@ -20,23 +20,23 @@
 
 ## Overview
 
-This is an architectural overview of Clear Containers, based on the 2.1 release.
+This is an architectural overview of Clear Containers, based on the 3.0 release.
 
 The [Clear Containers runtime (cc-runtime)](https://github.com/clearcontainers/runtime)
 complies with the [OCI](https://github.com/opencontainers) specifications and thus
 works seamlessly with the [Docker Engine](https://www.docker.com/products/docker-engine)
 pluggable runtime architecture. In other words, one can transparently replace the
-[default Docker runtime (runc)](https://github.com/opencontainers/runc) with `cc-oci-runtime`.
+[default Docker runtime (runc)](https://github.com/opencontainers/runc) with `cc-runtime`.
 
 ![Docker and Clear Containers](docker-cc.png)
 
 `cc-runtime` creates a QEMU/KVM virtual machine for each container the Docker engine creates.
 
-The container process is then spawned by [hyperstart](https://github.com/hyperhq/hyperstart/),
-an agent running as a daemon on the guest operating system.
+The container process is then spawned by an [agent](https://github.com/clearcontainers/agent),
+running as a daemon on the guest operating system.
 Hyperstart opens 2 virtio serial interfaces (Control and I/O) on the guest, and QEMU exposes them
 as serial devices on the host. `cc-runtime` uses the control device for sending container
-management commands to hyperstart while the I/O serial device is used to pass I/O streams (`stdout`,
+management commands to the agent while the I/O serial device is used to pass I/O streams (`stdout`,
 `stderr`, `stdin`) between the guest and the Docker Engine.
 
 For any given container, both the init process and all potentially executed commands within that
@@ -76,8 +76,9 @@ footprint are significantly optimized by using a specific QEMU version called [`
 time initializing devices of no use for containers.
 - Skipping the guest BIOS/firmware and jumping straight to the Clear Containers kernel.
 
-#### Hyperstart
+#### Agent ** fixme **
 
+['agent'](https://github.com/clearcontainers/agent)
 [`Hyperstart`](https://github.com/hyperhq/hyperstart) is a daemon running on the guest as an
 agent for managing containers and processes potentially running within those containers.
 
@@ -145,18 +146,18 @@ When handling the OCI `create` command, `cc-runtime` goes through the following 
 according to the container OCI configuration file.
 2. Spawn the `cc-shim` process and have it wait on a couple of temporary pipes for:
    * A `cc-proxy` created file descriptor (one end of a socketpair) for the shim to connect to.
-   * The container `hyperstart` sequence numbers for at most 2 I/O streams (One for `stdout` and `stdin`, one for `stderr`).
-   `hyperstart` uses those sequence numbers to multiplex all streams for all processes through one serial interface (The
+   * The container `agent` sequence numbers for at most 2 I/O streams (One for `stdout` and `stdin`, one for `stderr`).
+   The `agent` uses those sequence numbers to multiplex all streams for all processes through one serial interface (The
    virtio I/O serial one).
 3. Run all the [OCI hooks](https://github.com/opencontainers/runtime-spec/blob/master/config.md#hooks) in the container namespaces,
 as described by the OCI container configuration file.
 4. **fixme** [Set up the container networking](https://github.com/01org/cc-oci-runtime/blob/master/documentation/architecture.md#networking).
 This must happen after all hooks are done as one of them is potentially setting
 the container networking namespace up.
-5. Create the virtual machine running the container process. The VM `systemd` instance will spawn the `hyperstart` daemon.
-6. Wait for `hyperstart` to signal that it is ready.
-7. Send the pod creation command to `hyperstart`. The `hyperstart` pod is the container process sandbox.
-8. Send the allocateIO command to the proxy, for getting the `hyperstart` I/O sequence numbers described in step 2.
+5. Create the virtual machine running the container process. The VM `systemd` instance will spawn the `agent` daemon.
+6. Wait for the `agent` to signal that it is ready.
+7. Send the pod creation command to the `agent`. The `agent` pod is the container process sandbox.
+8. Send the allocateIO command to the proxy, for getting the `agent` I/O sequence numbers described in step 2.
 9. Pass the `cc-proxy` socketpair file descriptor, and the I/O sequence numbers to the listening cc-shim process through the dedicated pipes.
 10. The `cc-shim` instance is put into a stopped state to prevent it from doing I/O before the container is started.
 
@@ -174,8 +175,8 @@ these steps:
 
 1. `cc-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know which pod
 we want to use to create and start the new container.
-2. `cc-runtime` sends a hyperstart `NEWCONTAINER` command to create and start a new container in
-a given pod. The command is sent to `cc-proxy` who forwards it to the right hyperstart instance running
+2. `cc-runtime` sends an agent `NEWCONTAINER` command to create and start a new container in
+a given pod. The command is sent to `cc-proxy` who forwards it to the right agent instance running
 in the appropriate guest.
 3. `cc-runtime` resumes `cc-shim` so that it can now connect to the `cc-proxy` and acts as
 a signal and I/O streams proxy between `containerd-shim` and `cc-proxy`.
@@ -183,7 +184,7 @@ a signal and I/O streams proxy between `containerd-shim` and `cc-proxy`.
 ##### `exec`
 
 `docker exec` allows one to run an additional command within an already running container.
-With Clear Containers, this translates into sending a `EXECCMD` command to hyperstart so
+With Clear Containers, this translates into sending a `EXECCMD` command to the agent so
 that it runs a command into a running container belonging to a certain pod.
 All I/O streams from the executed command will be passed back to Docker through a newly
 created `cc-shim`.
@@ -193,10 +194,10 @@ the following steps:
 
 1. `cc-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know which pod
 we want to use to run the `exec` command.
-2. `cc-runtime` sends the allocateIO command to the proxy, for getting the `hyperstart` I/O sequence
+2. `cc-runtime` sends the allocateIO command to the proxy, for getting the `agent` I/O sequence
 numbers for the `exec` command I/O streams.
-3. `cc-runtime` sends an hyperstart `EXECMD` command to start the command in the right container
-The command is sent to `cc-proxy` who forwards it to the right hyperstart instance running
+3. `cc-runtime` sends an agent `EXECMD` command to start the command in the right container
+The command is sent to `cc-proxy` who forwards it to the right agent instance running
 in the appropriate guest.
 4. Spawn the `cc-shim` process for it to forward the output streams (stderr and stdout) and the `exec`
 command exit code to Docker.
@@ -219,8 +220,8 @@ Instead of `kill`'ing the `cc-shim` PID, it will go through the following steps:
 
 1. `cc-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know
 on which pod the container it is trying to `kill` is running.
-2. `cc-runtime` sends an hyperstart `KILLCONTAINER` command to `kill` the container running
-on the guest. The command is sent to `cc-proxy` who forwards it to the right hyperstart instance
+2. `cc-runtime` sends an agent `KILLCONTAINER` command to `kill` the container running
+on the guest. The command is sent to `cc-proxy` who forwards it to the right agent instance
 running in the appropriate guest.
 
 ##### `delete`
@@ -236,10 +237,10 @@ delete all related proxy resources:
 
 1. `cc-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know
 on which pod the container it is trying to to `delete` is running.
-2. `cc-runtime` sends an hyperstart `DESTROYPOD` command to `destroy` the pod holding the
+2. `cc-runtime` sends an agent `DESTROYPOD` command to `destroy` the pod holding the
 container running on the guest. The command is sent to `cc-proxy` who forwards it to the right
-hyperstart instance running in the appropriate guest.
-3. After deleting the last running pod, `hyperstart` will gracefully shut the virtual machine
+agent instance running in the appropriate guest.
+3. After deleting the last running pod, the `agent` will gracefully shut the virtual machine
 down.
 4. `cc-runtime` sends the `BYE` command to `cc-proxy`, to let it know that a given virtual
 machine is shut down. `cc-proxy` will then clean all its internal resources associated with this
@@ -247,12 +248,12 @@ VM.
 
 #### Proxy
 
-`cc-proxy` is a daemon offering access to the [`hyperstart`](https://github.com/hyperhq/hyperstart)
-VM agent to multiple `cc-shim` and `cc-runtime` clients.
+`cc-proxy` is a daemon offering access to the VM [`agent`](https://github.com/clearcontainers/agent)
+to multiple `cc-shim` and `cc-runtime` clients.
 Only a single instance of `cc-proxy` per host is necessary as it can be used for several different VMs.
 Its main role is to:
-- Arbitrate access to the `hyperstart` control channel between all the `cc-runtime` instances and the `cc-shim` ones.
-- Route the I/O streams between the various `cc-shim` instances and `hyperstart`.
+- Arbitrate access to the `agent` control channel between all the `cc-runtime` instances and the `cc-shim` ones.
+- Route the I/O streams between the various `cc-shim` instances and the `agent`.
 
 `cc-proxy` provides 2 client interfaces:
 
@@ -264,20 +265,20 @@ for more details about that interface.
 The protocol on the `cc-proxy` UNIX named socket supports the following commands:
 
 - `Hello`: This command is for `cc-runtime` to let `cc-proxy` know about a newly created VM that will
-hold containers. This command payload contains the `hyperstart` control and I/O UNIX socket paths created
+hold containers. This command payload contains the `agent` control and I/O UNIX socket paths created
 and exported by QEMU, and `cc-proxy` will connect to both of them after receiving the `Hello` command.
 - `Bye`: This is the opposite of `Hello`, i.e. `cc-runtime` uses this command to let `cc-proxy` know
 that it can release all resources related to the VM described in the command payload.
 - `Attach`: `cc-runtime` uses that command as a VM multiplexer as it allows it to notify `cc-proxy` about
 which VM it wants to talk to. In other words, this commands allows `cc-runtime` to attach itself to a
 running VM.
-- `AllocateIO`: As `hyperstart` can potentially handle I/O streams from multiple container processes at the
-same time, it needs to be able to associate any given stream to a container process. This is done by `hyperstart`
+- `AllocateIO`: As the `agent` can potentially handle I/O streams from multiple container processes at the
+same time, it needs to be able to associate any given stream to a container process. This is done by the `agent`
 allocating a set of at most 2 so-called sequence numbers per container process. `cc-runtime` will send
-the `AllocateIO` command to `cc-proxy` to have it request `hyperstart` to allocate those sequence numbers.
+the `AllocateIO` command to `cc-proxy` to have it request the `agent` to allocate those sequence numbers.
 They will be passed as command line arguments to `cc-shim`, who will then use them to e.g. prepend its stdin
 stream packets with the right sequence number.
-- `Hyper`: This command is used by both `cc-runtime` and `cc-shim` to forward `hyperstart` specific
+- `Hyper`: This command is used by both `cc-runtime` and `cc-shim` to forward `agent` specific
 commands.
 
 For more details about `cc-proxy`'s protocol, theory of operations or debugging tips, please read
@@ -293,26 +294,26 @@ With Clear Containers, `cc-shim` acts as the container process that `containerd-
 `containerd-shim` decides to send to the container process.
 
 `cc-shim` has an implicit knowledge about which VM agent will handle those streams and signals and thus act as
-an encapsulation layer between `containerd-shim` and `hyperstart`:
+an encapsulation layer between `containerd-shim` and the `agent`:
 
-- It fragments and encapsulates the standard input stream from containerd-shim into `hyperstart` stream packets:
+- It fragments and encapsulates the standard input stream from containerd-shim into `agent` stream packets:
 ```
   ┌───────────────────────────┬───────────────┬────────────────────┐
   │ IO stream sequence number │ Packet length │ IO stream fragment │
   │         (8 bytes)         │    (4 bytes)  │                    │
   └───────────────────────────┴───────────────┴────────────────────┘
 ```
-- It de-encapsulates and assembles standard output and error `hyperstart` stream packets into an output stream
+- It de-encapsulates and assembles standard output and error `agent` stream packets into an output stream
 that it forwards to `containerd-shim`
-- It translates all UNIX signals (except `SIGKILL` and `SIGSTOP`) into `hyperstart` `KILLCONTAINER` commands
+- It translates all UNIX signals (except `SIGKILL` and `SIGSTOP`) into `agent` `KILLCONTAINER` commands
 that it sends to the VM via `cc-proxy` UNIX named socket.
 
 The IO stream sequence numbers are passed from `cc-runtime` to `cc-shim` when the former spawns the latter.
-They are generated by `hyperstart` and `cc-runtime` fetches them by sending the `AllocateIO` command to
+They are generated by the `agent` and `cc-runtime` fetches them by sending the `AllocateIO` command to
 `cc-proxy`.
 
 As an example, let's say that running the `pwd` command from a container standard input will generate
-`/tmp` from the container standard output. `hyperstart` assigned this specific process 8888 and 8889 respectively
+`/tmp` from the container standard output. The `agent` assigned this specific process 8888 and 8889 respectively
 as the stdin, stdout and stderr sequence numbers.
 With `cc-shim` and Clear Containers, this example would look like:
 
@@ -383,6 +384,9 @@ Information on the use of nvdimm via QEMU is available in the QEMU source code
 
 This section provides a brief overview of architectural details and differences
 for previous versions of Clear Containers.
+
+#### Version 2.1
+- V2.1 moved to using `hyperstart` as an agent inside the VM
 
 #### Version 2.0
 
