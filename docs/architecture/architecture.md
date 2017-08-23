@@ -22,7 +22,7 @@
 
 This is an architectural overview of Clear Containers, based on the 2.1 release.
 
-The [Clear Containers runtime (cc-oci-runtime)](https://github.com/01org/cc-oci-runtime)
+The [Clear Containers runtime (cc-runtime)](https://github.com/clearcontainers/runtime)
 complies with the [OCI](https://github.com/opencontainers) specifications and thus
 works seamlessly with the [Docker Engine](https://www.docker.com/products/docker-engine)
 pluggable runtime architecture. In other words, one can transparently replace the
@@ -41,14 +41,14 @@ management commands to hyperstart while the I/O serial device is used to pass I/
 
 For any given container, both the init process and all potentially executed commands within that
 container, together with their related I/O streams, need to go through 2 virtio serial interfaces
-exported by QEMU. The [Clear Containers proxy (`cc-proxy`)](https://github.com/01org/cc-oci-runtime/tree/master/proxy)
+exported by QEMU. The [Clear Containers proxy (`cc-proxy`)](https://github.com/clearcontainers/proxy)
 multiplexes and demultiplexes those commands and streams for all container virtual machines.
 There is only one `cc-proxy` instance running per Clear Containers host.
 
 On the host, each container process is reaped by a Docker specific (`containerd-shim`) monitoring
 daemon. As Clear Containers processes run inside their own virtual machines, `containerd-shim`
 can not monitor, control or reap them. `cc-runtime` fixes that issue by creating an
-[additional shim process (`cc-shim`)](https://github.com/01org/cc-oci-runtime/tree/master/shim)
+[additional shim process (`cc-shim`)](https://github.com/clearcontainers/shim)
 between `containerd-shim` and `cc-proxy`. A `cc-shim` instance will both forward signals and `stdin`
 streams to the container process on the guest and pass the container `stdout` and `stderr` streams
 back to the Docker engine via `containerd-shim`.
@@ -69,7 +69,7 @@ create virtual machines where Docker containers will run:
 ![QEMU/KVM](qemu.png)
 
 Although Clear Containers can run with any recent QEMU release, containers boot time and memory
-footprint are significantly optimized by using a specific QEMU version called [`qemu-lite`](https://github.com/01org/qemu-lite).
+footprint are significantly optimized by using a specific QEMU version called [`qemu-lite`](https://github.com/clearcontainers/qemu/tree/qemu-lite-v2.9.0).
 
 `qemu-lite` improvements comes through a new `pc-lite` machine type, mostly by:
 - Removing many of the legacy hardware devices support so that the guest kernel does not waste
@@ -150,7 +150,7 @@ according to the container OCI configuration file.
    virtio I/O serial one).
 3. Run all the [OCI hooks](https://github.com/opencontainers/runtime-spec/blob/master/config.md#hooks) in the container namespaces,
 as described by the OCI container configuration file.
-4. [Set up the container networking](https://github.com/01org/cc-oci-runtime/blob/master/documentation/architecture.md#networking).
+4. **fixme** [Set up the container networking](https://github.com/01org/cc-oci-runtime/blob/master/documentation/architecture.md#networking).
 This must happen after all hooks are done as one of them is potentially setting
 the container networking namespace up.
 5. Create the virtual machine running the container process. The VM `systemd` instance will spawn the `hyperstart` daemon.
@@ -258,7 +258,7 @@ Its main role is to:
 
 - A UNIX, named socket for all `cc-runtime` instances on the host to send commands to `cc-proxy`.
 - One socket pair per `cc-shim` instance, to send stdin and receive stdout and stderr I/O streams. See the
-[cc-shim section](https://github.com/01org/cc-oci-runtime/blob/master/documentation/architecture.md#shim)
+[cc-shim section](#shim)
 for more details about that interface.
 
 The protocol on the `cc-proxy` UNIX named socket supports the following commands:
@@ -281,7 +281,7 @@ stream packets with the right sequence number.
 commands.
 
 For more details about `cc-proxy`'s protocol, theory of operations or debugging tips, please read
-[`cc-proxy` README](https://github.com/01org/cc-oci-runtime/tree/master/proxy).
+[`cc-proxy` README](https://github.com/clearcontainers/proxy).
 
 #### Shim
 
