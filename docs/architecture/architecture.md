@@ -30,12 +30,12 @@ pluggable runtime architecture. In other words, one can transparently replace th
 
 ![Docker and Clear Containers](docker-cc.png)
 
-`cc-oci-runtime` creates a QEMU/KVM virtual machine for each container the Docker engine creates.
+`cc-runtime` creates a QEMU/KVM virtual machine for each container the Docker engine creates.
 
 The container process is then spawned by [hyperstart](https://github.com/hyperhq/hyperstart/),
 an agent running as a daemon on the guest operating system.
 Hyperstart opens 2 virtio serial interfaces (Control and I/O) on the guest, and QEMU exposes them
-as serial devices on the host. `cc-oci-runtime` uses the control device for sending container
+as serial devices on the host. `cc-runtime` uses the control device for sending container
 management commands to hyperstart while the I/O serial device is used to pass I/O streams (`stdout`,
 `stderr`, `stdin`) between the guest and the Docker Engine.
 
@@ -47,12 +47,12 @@ There is only one `cc-proxy` instance running per Clear Containers host.
 
 On the host, each container process is reaped by a Docker specific (`containerd-shim`) monitoring
 daemon. As Clear Containers processes run inside their own virtual machines, `containerd-shim`
-can not monitor, control or reap them. `cc-oci-runtime` fixes that issue by creating an
+can not monitor, control or reap them. `cc-runtime` fixes that issue by creating an
 [additional shim process (`cc-shim`)](https://github.com/01org/cc-oci-runtime/tree/master/shim)
 between `containerd-shim` and `cc-proxy`. A `cc-shim` instance will both forward signals and `stdin`
 streams to the container process on the guest and pass the container `stdout` and `stderr` streams
 back to the Docker engine via `containerd-shim`.
-`cc-oci-runtime` creates a `cc-shim` daemon for each Docker container and for each command Docker
+`cc-runtime` creates a `cc-shim` daemon for each Docker container and for each command Docker
 wants to run within an already running container (`docker exec`).
 
 The container workload, i.e. the actual OCI bundle rootfs, is exported from the host to
@@ -85,11 +85,11 @@ It is statically built out of a compact C code base, with a strong focus on both
 and memory footprint.
 The `hyperstart` execution unit is the pod. A `hyperstart` pod is a container sandbox defined
 by a set of namespaces (UTS, PID, mount and IPC). Although a pod can hold several containers,
-`cc-oci-runtime` always runs a single container per pod.
+`cc-runtime` always runs a single container per pod.
 
 `Hyperstart` sends and receives [specific commands](https://github.com/hyperhq/hyperstart/blob/master/src/api.h)
 over a control serial interface for controlling and managing pods and containers. For example,
-`cc-oci-runtime` will send the following `hyperstart` commands sequence when starting a container:
+`cc-runtime` will send the following `hyperstart` commands sequence when starting a container:
 
 * `STARTPOD` creates a Pod sandbox and takes a `Pod` structure as its argument:
 ```Go
@@ -131,15 +131,15 @@ per container process, one for `stdout` and `stdin`, and another one for `stderr
 
 #### Runtime
 
-`cc-oci-runtime` is an OCI compatible container runtime and is responsible for handling all
+`cc-runtime` is an OCI compatible container runtime and is responsible for handling all
 commands specified by [the OCI runtime specification](https://github.com/opencontainers/runtime-spec)
 and launching `cc-shim` instances.
 
-Here we will describe how `cc-oci-runtime` handles the most important OCI commands.
+Here we will describe how `cc-runtime` handles the most important OCI commands.
 
 ##### `create`
 
-When handling the OCI `create` command, `cc-oci-runtime` goes through the following steps:
+When handling the OCI `create` command, `cc-runtime` goes through the following steps:
 
 1. Create the container namespaces (Only the network and mount namespaces are currently supported),
 according to the container OCI configuration file.
@@ -168,16 +168,16 @@ However the container process itself is not yet running as one needs to call `do
 ##### `start`
 
 On namespace containers `start` launches a traditional Linux container process in its own set of namespaces.
-With Clear Containers, the main task of `cc-oci-runtime` is to create and start a container within the
-pod that got created during the `create` step. In practice, this means `cc-oci-runtime` follows
+With Clear Containers, the main task of `cc-runtime` is to create and start a container within the
+pod that got created during the `create` step. In practice, this means `cc-runtime` follows
 these steps:
 
-1. `cc-oci-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know which pod
+1. `cc-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know which pod
 we want to use to create and start the new container.
-2. `cc-oci-runtime` sends a hyperstart `NEWCONTAINER` command to create and start a new container in
+2. `cc-runtime` sends a hyperstart `NEWCONTAINER` command to create and start a new container in
 a given pod. The command is sent to `cc-proxy` who forwards it to the right hyperstart instance running
 in the appropriate guest.
-3. `cc-oci-runtime` resumes `cc-shim` so that it can now connect to the `cc-proxy` and acts as
+3. `cc-runtime` resumes `cc-shim` so that it can now connect to the `cc-proxy` and acts as
 a signal and I/O streams proxy between `containerd-shim` and `cc-proxy`.
 
 ##### `exec`
@@ -188,14 +188,14 @@ that it runs a command into a running container belonging to a certain pod.
 All I/O streams from the executed command will be passed back to Docker through a newly
 created `cc-shim`.
 
-The `exec` code path is partly similar to the `create` one and `cc-oci-runtime` goes through
+The `exec` code path is partly similar to the `create` one and `cc-runtime` goes through
 the following steps:
 
-1. `cc-oci-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know which pod
+1. `cc-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know which pod
 we want to use to run the `exec` command.
-2. `cc-oci-runtime` sends the allocateIO command to the proxy, for getting the `hyperstart` I/O sequence
+2. `cc-runtime` sends the allocateIO command to the proxy, for getting the `hyperstart` I/O sequence
 numbers for the `exec` command I/O streams.
-3. `cc-oci-runtime` sends an hyperstart `EXECMD` command to start the command in the right container
+3. `cc-runtime` sends an hyperstart `EXECMD` command to start the command in the right container
 The command is sent to `cc-proxy` who forwards it to the right hyperstart instance running
 in the appropriate guest.
 4. Spawn the `cc-shim` process for it to forward the output streams (stderr and stdout) and the `exec`
@@ -208,18 +208,18 @@ namespaces with the container's init process.
 
 When sending the OCI `kill` command, container runtimes should send a [UNIX signal](https://en.wikipedia.org/wiki/Unix_signal)
 to the container process.
-In the Clear Containers context, this means `cc-oci-runtime` needs a way to send a signal
+In the Clear Containers context, this means `cc-runtime` needs a way to send a signal
 to the container process within the virtual machine. As `cc-shim` is responsible for
-forwarding signals to its associated running containers, `cc-oci-runtime` naturally
+forwarding signals to its associated running containers, `cc-runtime` naturally
 calls `kill` on the `cc-shim` PID.
 
-However, `cc-shim` is not able to trap `SIGKILL` and `SIGSTOP` and thus `cc-oci-runtime`
+However, `cc-shim` is not able to trap `SIGKILL` and `SIGSTOP` and thus `cc-runtime`
 needs to follow a different code path for those 2 signals.
 Instead of `kill`'ing the `cc-shim` PID, it will go through the following steps:
 
-1. `cc-oci-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know
+1. `cc-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know
 on which pod the container it is trying to `kill` is running.
-2. `cc-oci-runtime` sends an hyperstart `KILLCONTAINER` command to `kill` the container running
+2. `cc-runtime` sends an hyperstart `KILLCONTAINER` command to `kill` the container running
 on the guest. The command is sent to `cc-proxy` who forwards it to the right hyperstart instance
 running in the appropriate guest.
 
@@ -230,54 +230,54 @@ containers can not be `delete`d unless the OCI runtime is explictly being asked 
 case it will first `kill` the container and only then `delete` it.
 
 The resources held by a Clear Container are quite different from the ones held by a host
-namespace container e.g. run by `runc`. `cc-oci-runtime` needs mostly to delete the pod
+namespace container e.g. run by `runc`. `cc-runtime` needs mostly to delete the pod
 holding the stopped container on the virtual machine, shut the hypervisor down and finally
 delete all related proxy resources:
 
-1. `cc-oci-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know
+1. `cc-runtime` connects to `cc-proxy` and sends it the `attach` command to let it know
 on which pod the container it is trying to to `delete` is running.
-2. `cc-oci-runtime` sends an hyperstart `DESTROYPOD` command to `destroy` the pod holding the
+2. `cc-runtime` sends an hyperstart `DESTROYPOD` command to `destroy` the pod holding the
 container running on the guest. The command is sent to `cc-proxy` who forwards it to the right
 hyperstart instance running in the appropriate guest.
 3. After deleting the last running pod, `hyperstart` will gracefully shut the virtual machine
 down.
-4. `cc-oci-runtime` sends the `BYE` command to `cc-proxy`, to let it know that a given virtual
+4. `cc-runtime` sends the `BYE` command to `cc-proxy`, to let it know that a given virtual
 machine is shut down. `cc-proxy` will then clean all its internal resources associated with this
 VM.
 
 #### Proxy
 
 `cc-proxy` is a daemon offering access to the [`hyperstart`](https://github.com/hyperhq/hyperstart)
-VM agent to multiple `cc-shim` and `cc-oci-runtime` clients.
+VM agent to multiple `cc-shim` and `cc-runtime` clients.
 Only a single instance of `cc-proxy` per host is necessary as it can be used for several different VMs.
 Its main role is to:
-- Arbitrate access to the `hyperstart` control channel between all the `cc-oci-runtime` instances and the `cc-shim` ones.
+- Arbitrate access to the `hyperstart` control channel between all the `cc-runtime` instances and the `cc-shim` ones.
 - Route the I/O streams between the various `cc-shim` instances and `hyperstart`.
 
 `cc-proxy` provides 2 client interfaces:
 
-- A UNIX, named socket for all `cc-oci-runtime` instances on the host to send commands to `cc-proxy`.
+- A UNIX, named socket for all `cc-runtime` instances on the host to send commands to `cc-proxy`.
 - One socket pair per `cc-shim` instance, to send stdin and receive stdout and stderr I/O streams. See the
 [cc-shim section](https://github.com/01org/cc-oci-runtime/blob/master/documentation/architecture.md#shim)
 for more details about that interface.
 
 The protocol on the `cc-proxy` UNIX named socket supports the following commands:
 
-- `Hello`: This command is for `cc-oci-runtime` to let `cc-proxy` know about a newly created VM that will
+- `Hello`: This command is for `cc-runtime` to let `cc-proxy` know about a newly created VM that will
 hold containers. This command payload contains the `hyperstart` control and I/O UNIX socket paths created
 and exported by QEMU, and `cc-proxy` will connect to both of them after receiving the `Hello` command.
-- `Bye`: This is the opposite of `Hello`, i.e. `cc-oci-runtime` uses this command to let `cc-proxy` know
+- `Bye`: This is the opposite of `Hello`, i.e. `cc-runtime` uses this command to let `cc-proxy` know
 that it can release all resources related to the VM described in the command payload.
-- `Attach`: `cc-oci-runtime` uses that command as a VM multiplexer as it allows it to notify `cc-proxy` about
-which VM it wants to talk to. In other words, this commands allows `cc-oci-runtime` to attach itself to a
+- `Attach`: `cc-runtime` uses that command as a VM multiplexer as it allows it to notify `cc-proxy` about
+which VM it wants to talk to. In other words, this commands allows `cc-runtime` to attach itself to a
 running VM.
 - `AllocateIO`: As `hyperstart` can potentially handle I/O streams from multiple container processes at the
 same time, it needs to be able to associate any given stream to a container process. This is done by `hyperstart`
-allocating a set of at most 2 so-called sequence numbers per container process. `cc-oci-runtime` will send
+allocating a set of at most 2 so-called sequence numbers per container process. `cc-runtime` will send
 the `AllocateIO` command to `cc-proxy` to have it request `hyperstart` to allocate those sequence numbers.
 They will be passed as command line arguments to `cc-shim`, who will then use them to e.g. prepend its stdin
 stream packets with the right sequence number.
-- `Hyper`: This command is used by both `cc-oci-runtime` and `cc-shim` to forward `hyperstart` specific
+- `Hyper`: This command is used by both `cc-runtime` and `cc-shim` to forward `hyperstart` specific
 commands.
 
 For more details about `cc-proxy`'s protocol, theory of operations or debugging tips, please read
@@ -308,7 +308,7 @@ that it forwards to `containerd-shim`
 that it sends to the VM via `cc-proxy` UNIX named socket.
 
 The IO stream sequence numbers are passed from `cc-runtime` to `cc-shim` when the former spawns the latter.
-They are generated by `hyperstart` and `cc-oci-runtime` fetches them by sending the `AllocateIO` command to
+They are generated by `hyperstart` and `cc-runtime` fetches them by sending the `AllocateIO` command to
 `cc-proxy`.
 
 As an example, let's say that running the `pwd` command from a container standard input will generate
@@ -333,13 +333,13 @@ Instead it typically creates `TAP` interfaces for adding connectivity to a virtu
 machine.
 
 To overcome that incompatibility between typical container engines expectations
-and virtual machines, `cc-oci-runtime` networking transparently bridges `veth`
+and virtual machines, `cc-runtime` networking transparently bridges `veth`
 interfaces with `TAP` ones:
 
 ![Clear Containers networking](network.png)
 
 The [virtcontainers library](https://github.com/containers/virtcontainers#cnm) has some more
-details on how `cc-oci-runtime` implements [CNM](https://github.com/docker/libnetwork/blob/master/docs/design.md).
+details on how `cc-runtime` implements [CNM](https://github.com/docker/libnetwork/blob/master/docs/design.md).
 
 ## Appendices
 
