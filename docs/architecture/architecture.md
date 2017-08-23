@@ -68,6 +68,7 @@ create virtual machines where Docker containers will run:
 
 ![QEMU/KVM](qemu.png)
 
+** fixme - discuss different QEMUs - lite, q35, pc etc. **
 Although Clear Containers can run with any recent QEMU release, containers boot time and memory
 footprint are significantly optimized by using a specific QEMU version called [`qemu-lite`](https://github.com/clearcontainers/qemu/tree/qemu-lite-v2.9.0).
 
