@@ -59,7 +59,7 @@ The container workload, i.e. the actual OCI bundle rootfs, is exported from the 
 the virtual machine via a 9pfs virtio mount point. Hyperstart uses this mount point as the root
 filesystem for the container processes.
 
-![Overall architecture](overall-architecture.png)
+![Overall architecture](overall-architecture.svg)
 
 #### Hypervisor
 
