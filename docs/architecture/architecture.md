@@ -28,6 +28,7 @@ works seamlessly with the [Docker Engine](https://www.docker.com/products/docker
 pluggable runtime architecture. In other words, one can transparently replace the
 [default Docker runtime (runc)](https://github.com/opencontainers/runc) with `cc-runtime`.
 
+![Runtime and virtcontainers](runtime-vc-relationship.png)
 ![Docker and Clear Containers](docker-cc.png)
 
 `cc-runtime` creates a QEMU/KVM virtual machine for each container the Docker engine creates.
@@ -59,7 +60,7 @@ The container workload, i.e. the actual OCI bundle rootfs, is exported from the 
 the virtual machine via a 9pfs virtio mount point. Hyperstart uses this mount point as the root
 filesystem for the container processes.
 
-![Overall architecture](overall-architecture.svg)
+![Overall architecture](overall-architecture.png)
 
 #### Hypervisor
 
