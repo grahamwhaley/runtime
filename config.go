@@ -23,9 +23,9 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/Sirupsen/logrus"
 	vc "github.com/containers/virtcontainers"
 	"github.com/containers/virtcontainers/pkg/oci"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -83,8 +83,10 @@ type hypervisor struct {
 	DefaultMemSz          uint32 `toml:"default_memory"`
 	DisableBlockDeviceUse bool   `toml:"disable_block_device_use"`
 	MemPrealloc           bool   `toml:"enable_mem_prealloc"`
+	HugePages             bool   `toml:"enable_hugepages"`
 	Swap                  bool   `toml:"enable_swap"`
 	Debug                 bool   `toml:"enable_debug"`
+	DisableNestingChecks  bool   `toml:"disable_nesting_checks"`
 }
 
 type proxy struct {
@@ -234,8 +236,10 @@ func newQemuHypervisorConfig(h hypervisor) (vc.HypervisorConfig, error) {
 		DefaultMemSz:          h.defaultMemSz(),
 		DisableBlockDeviceUse: h.DisableBlockDeviceUse,
 		MemPrealloc:           h.MemPrealloc,
+		HugePages:             h.HugePages,
 		Mlock:                 !h.Swap,
 		Debug:                 h.Debug,
+		DisableNestingChecks:  h.DisableNestingChecks,
 	}, nil
 }
 
@@ -345,8 +349,10 @@ func loadConfiguration(configPath string, ignoreLogging bool) (resolvedConfigPat
 		DefaultVCPUs:          defaultVCPUCount,
 		DefaultMemSz:          defaultMemSize,
 		MemPrealloc:           defaultEnableMemPrealloc,
+		HugePages:             defaultEnableHugePages,
 		Mlock:                 !defaultEnableSwap,
 		Debug:                 defaultEnableDebug,
+		DisableNestingChecks:  defaultDisableNestingChecks,
 	}
 
 	defaultAgentConfig := vc.HyperConfig{
